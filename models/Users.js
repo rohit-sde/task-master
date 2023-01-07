@@ -70,14 +70,15 @@ const UsersSchema = new mongoose.Schema({
     },
     verifyMeta: {
         otp: {
-            type: Number
+            type: String,
+            default: "000000"
         },
         issued_at: {
             type: Date,
             default: Date.now
         }
     },
-    tasks: TaskSchema
+    tasks: [TaskSchema]
 })
 
 module.exports = mongoose.model('Users', UsersSchema)
