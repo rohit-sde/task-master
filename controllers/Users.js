@@ -2,8 +2,44 @@ const Users = require("../models/Users");
 const {err, ret} = require('../utils/utils')
 
 const getUsers = async (req, res) => {
-    const users = await Users.find({})
-    res.status(200).json({users})
+    const maxPerPage = 100;
+    let perPage = 20;
+    let page = 0
+
+    if( req.query.perpage ){
+        const num = Number(req.query.perpage)
+        perPage = num < 1 ? 1 : num > maxPerPage ? maxPerPage : num
+    }
+
+    if( req.query.page ){
+        const num = Number(req.query.page)
+        page = num > 0 ? num : 1
+        page--;
+    }
+    // console.log(req.query)
+    // res.json({perPage, page})
+    let users = await Users.find({})
+    .select('-verifyMeta -pass -__v')
+    .skip(page * perPage)
+    .limit(perPage)
+    
+    users = users.map(user => {
+        user = user.toJSON()
+        user.tasks = user.tasks.length
+        return user;
+    })
+    
+    res.status(200).send(users)
+    // let use = await Users.find({})
+    // res.status(200).send(use)
+    
+    
+    
+    
+    // console.log(req.query.perpage)
+    // console.log(req.query.page)
+    // const defaultUsersPerPage = 20;
+    // const users = 
 }
 const createUser = async (req, res, next) => {
     const data = {
