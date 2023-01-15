@@ -111,44 +111,131 @@ const updateUser = async (req, res) => {
     const data = {
         fname: req.body.fname,
         lname: req.body.lname,
-        otp: req.body.otp,
-        verified: req.body.verified,
     }
     let updateData = {}
     for(const key in data){
         if(data[key]) updateData[key] = data[key]
     }
-    let length = Object.keys(updateData).length;
-
-    console.log(length === 2 && updateData.fname && updateData.lname)    
-    console.log(length === 2 && updateData.fname)    
-    console.log(updateData.fname ? 1: 0)    
-    console.log(updateData["fname"])    
-    console.log(length === 2)    
-    console.log(length) 
-    // console.log()
-    console.log(updateData)    
-    if(length === 1){
-        if(updateData.fname){
-            res.status(200).send("fname")
-        }
-        else if(updateData.lname){
-            res.status(200).send("lname")
-        }
-        else if(updateData.otp){
-            res.status(200).send("otp")
-        }
-        else if(updateData.verified){
-            res.status(200).send("verified")
-        }
-    }
-    else if(length === 2 && updateData.fname && updateData.lname){
-        res.status(200).send("fname lname")
-    }
+    
+    if(!req.params.userId) res.status(400).json(err('Please pass "userId" in route URL'))
     else{
-        res.status(400).send( err("Invalid keys are passed.", {
-            possibleKeys: ["fname=...", "lname=...", "fname=...&lname=...", "otp=...", "verified=..."]
-        }) )
+        updateData.userId = req.params.userId
+        
+        let length = Object.keys(updateData).length;
+        if(length === 2){
+            if(updateData.fname){
+                // Validate "fname"
+                if(updateData.fname.match(/[a-zA-Z0-9\. ]/g).length !== updateData.fname.length)
+                res.status(400).json(err("Invalid First Name.", {"Allowed": ["a-z", "A-Z", " ", ".", "0-9"]} ))
+                else{
+                    try{
+                        let user = await Users.findByIdAndUpdate(
+                            updateData.userId,
+                            {
+                                fname: updateData.fname,
+                                updated_at: (new Date()).toISOString()
+                            },
+                            {
+                                new: true
+                            }
+                        )
+                        if(user){
+                            user = user.toJSON();
+                            delete user.verifyMeta
+                            delete user.pass
+                            delete user.__v
+                            user.tasks = user.tasks.length
+                            res.status(200).send(ret(user, "First name updated successfully."))
+                        }
+                        else{
+                            res.status(400).send(err("User ID doesn't exist."))
+                        }
+                    }
+                    catch(e){
+                        // console.log(e)
+                        res.status(400).send(err(`Cast to ObjectId failed for value "${e.value}"`))
+                    }
+                }
+            }
+            else if(updateData.lname){
+                // Validate "lname"
+                if(updateData.lname.match(/[a-zA-Z0-9\. ]/g).length !== updateData.lname.length)
+                res.status(400).json(err("Invalid Last Name.", {"Allowed": ["a-z", "A-Z", " ", ".", "0-9"]} ))
+                else{
+                    try{
+                        let user = await Users.findByIdAndUpdate(
+                            updateData.userId,
+                            {
+                                lname: updateData.lname,
+                                updated_at: (new Date()).toISOString()
+                            },
+                            {
+                                new: true
+                            }
+                        )
+                        if(user){
+                            user = user.toJSON();
+                            delete user.verifyMeta
+                            delete user.pass
+                            delete user.__v
+                            user.tasks = user.tasks.length
+                            res.status(200).send(ret(user, "Last name updated successfully."))
+                        }
+                        else{
+                            res.status(400).send(err("User ID doesn't exist."))
+                        }
+                    }
+                    catch(e){
+                        // console.log(e)
+                        res.status(400).send(err(`Cast to ObjectId failed for value "${e.value}"`))
+                    }
+                }
+            }
+        }
+        else if(length === 3 && updateData.fname && updateData.lname){
+            // Validate "fname AND lname"
+            if(updateData.fname.match(/[a-zA-Z0-9\. ]/g).length !== updateData.fname.length)
+                res.status(400).json(err("Invalid First Name.", {"Allowed": ["a-z", "A-Z", " ", ".", "0-9"]} ))
+            else if(updateData.lname.match(/[a-zA-Z0-9\. ]/g).length !== updateData.lname.length)
+                res.status(400).json(err("Invalid Last Name.", {"Allowed": ["a-z", "A-Z", " ", ".", "0-9"]} ))
+            else{
+                try{
+                    let user = await Users.findByIdAndUpdate(
+                        updateData.userId,
+                        {
+                            fname: updateData.fname,
+                            lname: updateData.lname,
+                            updated_at: (new Date()).toISOString()
+                        },
+                        {
+                            new: true
+                        }
+                    )
+                    if(user){
+                        user = user.toJSON();
+                        delete user.verifyMeta
+                        delete user.pass
+                        delete user.__v
+                        user.tasks = user.tasks.length
+                        res.status(200).send(ret(user, "First & Last name updated successfully."))
+                    }
+                    else{
+                        res.status(400).send(err("User ID doesn't exist."))
+                    }
+                }
+                catch(e){
+                    // console.log(e)
+                    res.status(400).send(err(`Cast to ObjectId failed for value "${e.value}"`))
+                }
+            }
+        }
+        else{
+            console.log(updateData);
+            res.status(400).send( err("Invalid keys are passed.", {
+                note: 'Send as JSON data AND always MUST pass "userid" key',
+                possibleKeys: ["fname=...", "lname=...", "fname=...&lname=..."]
+            }) )
+        }
     }
 }
 
