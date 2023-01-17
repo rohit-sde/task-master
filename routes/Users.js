@@ -10,4 +10,7 @@ router.route("/")
 router.route("/:userId")
     .patch(Users.updateUser)
 
+router.route("/:userId/verifyEmail")
+    .patch(Users.verifyEmail)
+
 module.exports = router;

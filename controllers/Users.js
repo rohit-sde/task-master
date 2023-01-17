@@ -1,9 +1,11 @@
-const Users = require("../models/Users");
-const {err, ret} = require('../utils/utils')
+const Users = require('../models/Users')
+const {err, ret, emailTemplate} = require('../utils/utils')
+const nodemailer = require('nodemailer')
+const {google} = require('googleapis')
 
 const getUsers = async (req, res) => {
-    const maxPerPage = 100;
-    let perPage = 20;
+    const maxPerPage = 100
+    let perPage = 20
     let page = 0
 
     if( req.query.perpage ){
@@ -14,7 +16,7 @@ const getUsers = async (req, res) => {
     if( req.query.page ){
         const num = Number(req.query.page)
         page = num > 0 ? num : 1
-        page--;
+        page--
     }
     // console.log(req.query)
     // res.json({perPage, page})
@@ -26,7 +28,7 @@ const getUsers = async (req, res) => {
     users = users.map(user => {
         user = user.toJSON()
         user.tasks = user.tasks.length
-        return user;
+        return user
     })
     
     res.status(200).send(users)
@@ -38,7 +40,7 @@ const getUsers = async (req, res) => {
     
     // console.log(req.query.perpage)
     // console.log(req.query.page)
-    // const defaultUsersPerPage = 20;
+    // const defaultUsersPerPage = 20
     // const users = 
 }
 const createUser = async (req, res, next) => {
@@ -67,7 +69,7 @@ const createUser = async (req, res, next) => {
         validateError = err("Invalid Email.")
     
     // Validate "pass"
-    const pattern = /(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@#$%^&*!])/;
+    const pattern = /(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@#$%^&*!])/
     if(!validateError && ! pattern.test(data.pass) )
         validateError = err("Weak Password.")
     if(!validateError && data.pass.match(/[a-zA-Z0-9!@#$%^&*()]/g).length !== data.pass.length )
@@ -82,7 +84,7 @@ const createUser = async (req, res, next) => {
             let user = await Users.findOne({ email: data.email })
             if(!user){
                 // Create User
-                user = await Users.create(data);
+                user = await Users.create(data)
                 
                 if(user){
                     user = user.toJSON()
@@ -121,7 +123,7 @@ const updateUser = async (req, res) => {
     else{
         updateData.userId = req.params.userId
         
-        let length = Object.keys(updateData).length;
+        let length = Object.keys(updateData).length
         if(length === 2){
             if(updateData.fname){
                 // Validate "fname"
@@ -140,7 +142,7 @@ const updateUser = async (req, res) => {
                             }
                         )
                         if(user){
-                            user = user.toJSON();
+                            user = user.toJSON()
                             delete user.verifyMeta
                             delete user.pass
                             delete user.__v
@@ -174,7 +176,7 @@ const updateUser = async (req, res) => {
                             }
                         )
                         if(user){
-                            user = user.toJSON();
+                            user = user.toJSON()
                             delete user.verifyMeta
                             delete user.pass
                             delete user.__v
@@ -212,7 +214,7 @@ const updateUser = async (req, res) => {
                         }
                     )
                     if(user){
-                        user = user.toJSON();
+                        user = user.toJSON()
                         delete user.verifyMeta
                         delete user.pass
                         delete user.__v
@@ -230,7 +232,7 @@ const updateUser = async (req, res) => {
             }
         }
         else{
-            console.log(updateData);
+            // console.log(updateData)
             res.status(400).send( err("Invalid keys are passed.", {
                 note: 'Send as JSON data AND always MUST pass "userid" key',
                 possibleKeys: ["fname=...", "lname=...", "fname=...&lname=..."]
@@ -238,5 +240,147 @@ const updateUser = async (req, res) => {
         }
     }
 }
+const verifyEmail = async (req, res) => {
+    const {userId} = req.params
+    
+    if(req.body.otp && (otp = Number(req.body.otp) ) !== 'NaN'){
+        if(otp > 100000 && otp < 999999){
+            let user = await Users.findById(userId)
+            
+            if(!user.verified){
+                const verifyMeta = user.verifyMeta
+                
+                const diff = ( new Date() ).getTime() - (new Date(verifyMeta.issued_at) ).getTime()
+                
+                if(diff < 1000 * 1000){   // milliseconds
+                    if(otp === Number(verifyMeta.otp)){
+                        try{
+                            verifyMeta.otp = '000000'
+                            verifyMeta.issused_at = (new Date).toISOString()
+                            user = await Users.findByIdAndUpdate(userId, {verified: true, verifyMeta}, {new: true})
+                            res.status(200).send(ret("Email verified successfully."))
+                        }
+                        catch(e){
+                            res.status(400).send(err("Failed to update [verified]", e) )
+                        }
+                    }
+                    else{
+                        res.status(400).send(err("Wrong OTP passed.") )
+                    }
+                }
+                else{
+                    res.status(400).send(err("OTP expired.") )
+                }
+            }
+            else{
+                res.status(400).send(err("Email is already verified."))
+            }
+        }
+        else{
+            res.status(400).send(err("Please pass 6 figure OTP.") )
+        }
+    }
+    else{
+        const otp = 100000 + Math.round(Math.random() * 1000000)
+        let data = {
+            verifyMeta: {
+                otp,
+                issued_at: (new Date).toISOString()
+            }
+        }
+        let options = {new: true}
 
-module.exports = {getUsers, createUser, updateUser}
+        try{
+            let user = await Users.findById(userId)
+
+            if(!user.verified){
+                const html = `
+                    <h2>Verify your email</h2>
+                    <p class="center">OTP</p>
+                    <p class="center otp">${otp}</p>
+                    <p class="center danger">
+                        <strong>Note:</strong>
+                        <em>OTP is valid only for <strong>60</strong> seconds.</em> 
+                    </p>
+                `
+                const css = `
+                    .center{color: gray; font-weight: bold;}
+                    .otp{font-size: 24px; letter-spacing: 2px;}
+                    .danger{color: red;}
+                `
+                const emailBody = {
+                    html: emailTemplate(html, css),
+                    text: `[OTP: ${otp}] - This OTP is valid only for 60 seconds.`
+                }
+                let emailRes = await sendOTP(user.email, "Please verify your email", emailBody)
+                
+                if(typeof ( accepted = emailRes.accepted ) === 'object' && accepted.length === 1 && accepted[0] === user.email){
+                    user = await Users.findByIdAndUpdate(userId, data, options)
+                    if(user){
+                        res.status(200).send(ret(`OTP has been sent to <${user.email}>.`, `This OTP is Valid only for 60 seconds.`))
+                    }
+                    else{
+                        res.status(400).send(err("Something went wrong while sending OTP."))
+                    }
+                }
+                else{
+                    res.status(400).send(err("Something went wrong with [sendOTP] method.", emailRes))
+                }
+            }
+            else{
+                res.status(400).send(err("Email is already verified."))
+            }
+        }
+        catch(e){
+            res.status(400).send(err("Error while sending OTP.", e) )
+        }
+    }
+}
+const sendOTP = async (email, subject, emailBody, attachments) => {
+
+    const {OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REFRESH_TOKEN, OAUTH_REDIRECT_URI} = process.env
+    const oAuth2Client = new google.auth.OAuth2(OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI)
+    oAuth2Client.setCredentials({refresh_token: OAUTH_REFRESH_TOKEN})
+    const accessToken = await oAuth2Client.getAccessToken()
+
+
+    let mail = {
+        from: `Task Cutive <` + process.env.APP_EMAIL + `>`,
+        to: email,
+        subject,
+        ...emailBody
+    }
+    if(typeof attachments === 'object') mail.attachments = attachments
+    /*  attachments = [
+            {
+                filename: `${name}.pdf`,
+                path: path.join(__dirname, `.... /${name}.pdf`),
+                contentType: `application/pdf`
+            }
+        ]
+    */
+   
+   let transport = {
+       service: 'gmail',
+        auth: {
+            type: 'OAuth2',
+            user: process.env.APP_EMAIL,
+            clientId: OAUTH_CLIENT_ID,
+            clientSecret: OAUTH_CLIENT_SECRET,
+            refreshToken: OAUTH_REFRESH_TOKEN,
+            accessToken: accessToken
+        }
+    }
+    let transporter = nodemailer.createTransport(transport)
+    
+    try{
+        const result = await transporter.sendMail(mail)
+        // console.log(result)
+        return result
+    } catch(e){
+        // console.log(e)
+        return e
+    }
+}
+
+module.exports = {getUsers, createUser, updateUser, verifyEmail}

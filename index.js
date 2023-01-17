@@ -5,11 +5,11 @@ const usersRouter = require("./routes/Users")
 const {NotFound} = require("./middlewares/NotFound")
 const DefaultError = require("./middlewares/DefaultError")
 
-const app = express();
+const app = express()
 
 const envConfig = dotenv.config()
-let env = {};
-if(envConfig.error) console.log(envConfig);
+let env = {}
+if(envConfig.error) console.log(envConfig)
 else env = envConfig.parsed
 
 // Middlewares
@@ -27,15 +27,15 @@ app.use(DefaultError)
 
 // Server
 const start = async () => {
-  const port = process.env.PORT || 5000;
+  const port = process.env.PORT || 5000
   try {
-    await connectDB(process.env.MONGO_URI);
+    await connectDB(process.env.MONGO_URI)
     app.listen(port, () =>
       console.log(`Server is listening on port ${port}...`)
-    );
+    )
   } catch (error) {
-    console.log(error);
+    console.log(error)
   }
-};
+}
 
-start();
+start()
