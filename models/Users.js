@@ -79,12 +79,7 @@ const UsersSchema = new mongoose.Schema({
         },
         used_for: {
             type: String,
-            enum: ['verify-email', 'reset-password'],
-            default: ''
-        },
-        previously_used_for: {
-            type: String,
-            enum: ['verify-email', 'reset-password'],
+            enum: ['', 'verify-email', 'reset-password'],
             default: ''
         }
     },

@@ -1,7 +1,11 @@
 const Users = require('../models/Users')
+const Tokens = require('../models/Tokens')
 const {err, ret, emailTemplate} = require('../utils/utils')
 const nodemailer = require('nodemailer')
 const {google} = require('googleapis')
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken')
+require('dotenv').config()
 
 const getUsers = async (req, res) => {
     const maxPerPage = 100
@@ -84,6 +88,7 @@ const createUser = async (req, res, next) => {
             let user = await Users.findOne({ email: data.email })
             if(!user){
                 // Create User
+                data.pass = bcrypt.hashSync(data.pass, 12)
                 user = await Users.create(data)
                 
                 if(user){
@@ -523,5 +528,122 @@ const resetPassword = async (req, res) => {
         res.status(400).send(err('Please send "userEmail".') )
     }
 }
+const login = async (req, res) => {
+    const userEmail = req.body.userEmail
+    const userPass = req.body.userPass
 
-module.exports = {getUsers, createUser, updateUser, verifyEmail, resetPassword}
+    if(userEmail && userPass){
+        let user = await Users.find({email: userEmail})
+        if(user && user.length > 0){
+            if(user.length <2){
+                user = user[0]
+                try{
+                    if(bcrypt.compareSync(userPass, user.pass)){
+                        let data = {
+                            userId: user._id,
+                            fname: user.fname,
+                            lname: user.lname
+                        }
+                        let accessToken = jwt.sign(data, process.env.JWT_ACCESS_TOKEN_SECRET, {expiresIn: 60*60})
+                        let refreshToken = jwt.sign(data, process.env.JWT_REFRESH_TOKEN_SECRET)
+
+                        await Tokens.create({refreshToken})
+                        res.status(200).json(ret({
+                            accessToken, refreshToken
+                        }, "LoggedIn Successfully."))
+                    }
+                    else{
+                        res.status(400).json(err("Invalid Email/Password. [3]"))
+                    }
+                }
+                catch(e){
+                    res.status(400).json(err("Error Found.", e))
+                }
+            }
+            else{
+                res.status(400).json(err("Something went wrong. [2]"))
+            }
+        }
+        else{
+            res.status(400).json(err("Invalid Email/Password. [1]"))
+        }
+    }
+    else{
+        userEmail ?
+        res.status(400).json(err('Pass "userPass"')) :
+        userPass ?
+        res.status(400).json(err('Pass "userEmail"')) :
+        res.status(400).json(err('Pass "userEmail" & "userPass"'))
+    }
+}
+const logout = async (req, res) => {
+    const refreshToken = req.body.refreshToken
+    if(refreshToken){
+        try{
+            let token = await Tokens.findOneAndDelete({refreshToken})
+            if(token){
+                res.status(200).json(ret("Logged out Successfully"))
+            }
+            else{
+                res.status(400).json(err('Failed to logout.'))
+            }
+        }
+        catch(e){
+            res.status(400).json(err('Something went wrong. [logout]', e))
+        }
+    }
+    else{
+        res.status(400).json(err('Must pass "refreshToken"'))
+    }
+}
+const refreshToken = async (req, res) => {
+    const refreshToken = req.body.refreshToken
+    if(refreshToken){
+        try{
+            let token = await Tokens.findOne({refreshToken})
+            if(token){
+                let userData = jwt.verify(token.refreshToken, process.env.JWT_REFRESH_TOKEN_SECRET)
+                let data = {
+                    userId: userData.userId,
+                    fname: userData.fname,
+                    lname: userData.lname
+                }
+                let accessToken = jwt.sign(data, process.env.JWT_ACCESS_TOKEN_SECRET, {expiresIn: 60*60})
+                res.status(200).json(ret({
+                    accessToken, refreshToken
+                }, "Token Refreshed successfully."))
+            }
+            else{
+                res.status(400).json(err('Failed to Refresh Token.'))
+            }
+        }
+        catch(e){
+            res.status(400).json(err('Something went wrong. [refreshToken]', e))
+        }
+    }
+    else{
+        res.status(400).json(err('Must pass "refreshToken"'))
+    }
+}
+const authenticateToken = async (req, res, next) => {
+    if( (accessToken = req.headers.authorization) && accessToken.length > 7){
+        accessToken = accessToken.slice(7)
+        try{
+            let data = jwt.verify(accessToken, process.env.JWT_ACCESS_TOKEN_SECRET)
+            if(data){
+                next()
+            }
+            else{
+                res.status(400).json(err("Something Went wrong. [authenticateToken]"))
+            }
+        }
+        catch(e){
+            res.status(403).json(err("Failed to Decrypt Access Token", e))
+        }
+    }
+    else{
+        res.status(401).json(err("Authorisation required."))
+    }
+}
+
+module.exports = {getUsers, createUser, updateUser, verifyEmail, resetPassword, login, logout, refreshToken, authenticateToken}
