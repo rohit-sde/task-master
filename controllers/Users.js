@@ -247,33 +247,43 @@ const verifyEmail = async (req, res) => {
         if(otp > 100000 && otp < 999999){
             let user = await Users.findById(userId)
             
-            if(!user.verified){
-                const verifyMeta = user.verifyMeta
-                
-                const diff = ( new Date() ).getTime() - (new Date(verifyMeta.issued_at) ).getTime()
-                
-                if(diff < 1000 * 1000){   // milliseconds
-                    if(otp === Number(verifyMeta.otp)){
-                        try{
-                            verifyMeta.otp = '000000'
-                            verifyMeta.issused_at = (new Date).toISOString()
-                            user = await Users.findByIdAndUpdate(userId, {verified: true, verifyMeta}, {new: true})
-                            res.status(200).send(ret("Email verified successfully."))
+            if(user){
+                if(!user.verified){
+                    const verifyMeta = user.verifyMeta
+                    if(verifyMeta.used_for === 'verify-email'){
+                        const diff = ( new Date() ).getTime() - (new Date(verifyMeta.issued_at) ).getTime()
+                        
+                        if(diff < 60 * 1000){   // milliseconds
+                            if(otp === Number(verifyMeta.otp)){
+                                try{
+                                    verifyMeta.otp = '000000'
+                                    verifyMeta.issued_at = (new Date()).toISOString()
+                                    verifyMeta.used_for = ''
+                                    user = await Users.findByIdAndUpdate(userId, {verified: true, verifyMeta}, {new: true})
+                                    res.status(200).send(ret("Email verified successfully."))
+                                }
+                                catch(e){
+                                    res.status(400).send(err("Failed to update [verified]", e) )
+                                }
+                            }
+                            else{
+                                res.status(400).send(err("Wrong OTP passed.") )
+                            }
                         }
-                        catch(e){
-                            res.status(400).send(err("Failed to update [verified]", e) )
-                        }
+                        else{
+                            res.status(400).send(err("OTP expired.") )
+                        }   
                     }
                     else{
-                        res.status(400).send(err("Wrong OTP passed.") )
+                        res.status(400).send(err("Please first request OTP for email verification.") )
                     }
                 }
                 else{
-                    res.status(400).send(err("OTP expired.") )
-                }
+                    res.status(400).send(err("Email is already verified."))
+                }   
             }
             else{
-                res.status(400).send(err("Email is already verified."))
+                res.status(400).send(err("UserID doesn't exists."))
             }
         }
         else{
@@ -285,7 +295,8 @@ const verifyEmail = async (req, res) => {
         let data = {
             verifyMeta: {
                 otp,
-                issued_at: (new Date).toISOString()
+                issued_at: (new Date).toISOString(),
+                used_for: 'verify-email'
             }
         }
         let options = {new: true}
@@ -382,5 +393,135 @@ const sendOTP = async (email, subject, emailBody, attachments) => {
         return e
     }
 }
+const resetPassword = async (req, res) => {
+    const userEmail = req.body.userEmail
+    const otp = Number(req.body.otp)
+    const newPassword = req.body.newPassword
+    
+    let user;
+    if(userEmail && otp && newPassword){
+        // res.status(200).send(ret('verify otp') )
+        if(otp !== 'NaN' && otp > 100000 && otp < 999999){
+            user = await Users.find({email: userEmail})
+            if(user && user.length === 1){
+                user = user[0]
+                const verifyMeta = user.verifyMeta
 
-module.exports = {getUsers, createUser, updateUser, verifyEmail}
+                if(verifyMeta.used_for === 'reset-password'){
+                    const diff = ( new Date() ).getTime() - (new Date(verifyMeta.issued_at) ).getTime()
+                    
+                    if(diff < 6000 * 1000){   // milliseconds
+                        if(otp === Number(verifyMeta.otp)){
+                            // Validate "pass"
+                            let validateError = false
+                            const pattern = /(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@#$%^&*!])/
+                            if(!validateError && ! pattern.test(newPassword) )
+                                validateError = err("Weak Password.")
+                            if(!validateError && newPassword.match(/[a-zA-Z0-9!@#$%^&*()]/g).length !== newPassword.length )
+                                validateError = err("Invalid characters are used in Password.")
+                            
+                            if(!validateError){
+                                try{
+                                    verifyMeta.otp = '000000'
+                                    verifyMeta.issued_at = (new Date() ).toISOString()
+                                    verifyMeta.used_for = ''
+                                    user = await Users.findByIdAndUpdate(user._id, {pass: newPassword, verifyMeta}, {new: true})
+                                    res.status(200).send(ret("Password has been Reset successfully."))
+                                }
+                                catch(e){
+                                    res.status(400).send(err("Failed to reset password", e) )
+                                }
+                            }
+                            else{
+                                res.status(400).send(err(validateError) )
+                            }
+                        }
+                        else{
+                            res.status(400).send(err("Wrong OTP passed.") )
+                        }
+                    }
+                    else{
+                        res.status(400).send(err("OTP expired.") )
+                    }
+                }
+                else{
+                    res.status(400).send(err("Please first request OTP for Password Reset.") )
+                }
+    
+            }
+            else{
+                res.status(400).send(err("Email ID doesn't Exists.") )
+            }
+        }
+        else{
+            res.status(400).send(err("Please send 6 figure OTP.") )
+        }
+    }
+    else if(userEmail && otp){
+        res.status(400).send(err('Please send "newPassword".') )
+    }
+    else if(userEmail && newPassword){
+        res.status(400).send(err('Please send "otp".') )
+    }
+    else if(userEmail){
+        user = await Users.find({email: userEmail})
+        if(user && user.length === 1){
+            user = user[0]
+            const otp = 100000 + Math.round(Math.random() * 1000000)
+            let data = {
+                verifyMeta: {
+                    otp,
+                    issued_at: (new Date).toISOString(),
+                    used_for: 'reset-password'
+                }
+            }
+            let options = {new: true}
+
+            try{
+                const html = `
+                    <h2>Reset your Password</h2>
+                    <p class="center">OTP</p>
+                    <p class="center otp">${otp}</p>
+                    <p class="center danger">
+                        <strong>Note:</strong>
+                        <em>OTP is valid only for <strong>60</strong> seconds.</em> 
+                    </p>
+                `
+                const css = `
+                    .center{color: gray; font-weight: bold;}
+                    .otp{font-size: 24px; letter-spacing: 2px;}
+                    .danger{color: red;}
+                `
+                const emailBody = {
+                    html: emailTemplate(html, css),
+                    text: `[OTP: ${otp}] - This OTP is valid only for 60 seconds.`
+                }
+                let emailRes = await sendOTP(user.email, "Reset Password", emailBody)
+                
+                if(typeof ( accepted = emailRes.accepted ) === 'object' && accepted.length === 1 && accepted[0] === user.email){
+                    user = await Users.findByIdAndUpdate(user._id, data, options)
+                    if(user){
+                        res.status(200).send(ret(`OTP has been sent to <${user.email}>.`, `This OTP is Valid only for 60 seconds.`))
+                    }
+                    else{
+                        res.status(400).send(err("Something went wrong while sending OTP."))
+                    }
+                }
+                else{
+                    res.status(400).send(err("Something went wrong with [sendOTP] method.", emailRes))
+                }
+            }
+            catch(e){
+                res.status(400).send(err("Error while sending OTP.", e) )
+            }
+        }
+        else{
+            res.status(400).send(err("Email doesn't exists") )
+        }
+    }
+    else{
+        res.status(400).send(err('Please send "userEmail".') )
+    }
+}
+
+module.exports = {getUsers, createUser, updateUser, verifyEmail, resetPassword}

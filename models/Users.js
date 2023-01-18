@@ -76,6 +76,16 @@ const UsersSchema = new mongoose.Schema({
         issued_at: {
             type: Date,
             default: Date.now
+        },
+        used_for: {
+            type: String,
+            enum: ['verify-email', 'reset-password'],
+            default: ''
+        },
+        previously_used_for: {
+            type: String,
+            enum: ['verify-email', 'reset-password'],
+            default: ''
         }
     },
     tasks: [TaskSchema]

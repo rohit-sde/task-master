@@ -7,6 +7,9 @@ router.route("/")
     .get(Users.getUsers)
     .post(Users.createUser)
 
+router.route("/resetPassword")
+    .patch(Users.resetPassword)
+
 router.route("/:userId")
     .patch(Users.updateUser)
 
