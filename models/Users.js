@@ -1,6 +1,10 @@
 const mongoose = require('mongoose')
 
 const TaskSchema = new mongoose.Schema({
+    _id: {
+        type: mongoose.Types.ObjectId,
+        auto: true
+    },
     title: {
         type: String,
         required: [true, `[Title] must provide`],
@@ -22,7 +26,18 @@ const TaskSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-    
+    created_at: {
+        type: Date,
+        default: Date.now
+    },
+    updated_at: {
+        type: Date,
+        default: Date.now
+    },
+    completed_at: {
+        type: Date,
+        default: Date.now
+    }
 })
 
 const UsersSchema = new mongoose.Schema({

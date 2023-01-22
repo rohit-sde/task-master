@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer')
 const {google} = require('googleapis')
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken')
+const mongoose = require('mongoose')
 require('dotenv').config()
 
 const getUsers = async (req, res) => {
@@ -36,16 +37,7 @@ const getUsers = async (req, res) => {
     })
     
     res.status(200).send(users)
-    // let use = await Users.find({})
-    // res.status(200).send(use)
-    
-    
-    
-    
-    // console.log(req.query.perpage)
-    // console.log(req.query.page)
-    // const defaultUsersPerPage = 20
-    // const users = 
+
 }
 const createUser = async (req, res, next) => {
     const data = {
@@ -631,6 +623,7 @@ const authenticateToken = async (req, res, next) => {
         try{
             let data = jwt.verify(accessToken, process.env.JWT_ACCESS_TOKEN_SECRET)
             if(data){
+                res.locals.authUser = data
                 next()
             }
             else{
@@ -645,5 +638,90 @@ const authenticateToken = async (req, res, next) => {
         res.status(401).json(err("Authorisation required."))
     }
 }
+const getTasks = async (req, res) => {
+    console.log(res.locals)
+    // let {authUser} = res.locals
+    // const userId = authUser.userId
+    // let tasks = Users
+    //     .find({_id: userId})
+    //     .select("tasks")
+    res.status(200).json(ret("tasks"))
+}
+const createTask = async (req, res) => {
+    let {authUser} = res.locals
+    const userId = authUser.userId
+    let data = {}
 
-module.exports = {getUsers, createUser, updateUser, verifyEmail, resetPassword, login, logout, refreshToken, authenticateToken}
+    if(req.body.title && req.body.description){
+        data.title = req.body.title
+        data.description = req.body.description
+
+        if(req.body.priority){
+            let priority = req.body.priority
+            if(priority.toLowerCase() === 'high' || priority.toLowerCase() === 'low')
+                data.priority = priority.toLowerCase()
+            else{
+                res.status(400).json(ret('"high" or "low" are the only possible values "priority"'))
+            }
+        }
+        try{
+            let taskRes = await Users.updateOne(
+                {
+                    _id: "6161261758b9a4723a146380"
+                },
+                {
+                    $push: {
+                        tasks : data
+                    }
+                }
+            )
+
+            if(taskRes && taskRes.modifiedCount === 1){
+                let task = await Users.aggregate([
+                    {
+                        $match:{
+                            _id: mongoose.Types.ObjectId(userId),
+                            "tasks.title": data.title,
+                            "tasks.description": data.description
+                        }
+                    },
+                    {
+                        $sort: {
+                            created_at: -1
+                        }
+                    }
+                ])
+                console.log(task)
+                res.status(200).json(ret(data))
+            }
+            else{
+                res.status(400).json(ret('Failed to Add tasks'))
+            }
+        }
+        catch(e){
+            res.status(400).json(ret('Something went wrong [createTask]', e))
+        }
+    }
+    else{
+        req.body.title ?
+        res.status(400).json(ret('"description" must required')) :
+        req.body.description ?
+        res.status(400).json(ret('"title" must required')) :
+        res.status(400).json(ret('"title" & "description" must required'))
+    }
+    
+    // console.log()
+    // const userId = authUser.userId
+    // let tasks = Users
+    //     .find({_id: userId})
+    //     .select("tasks")
+    
+}
+
+
+module.exports = {
+    getUsers, createUser, updateUser,
+    verifyEmail, resetPassword,
+    login, logout, refreshToken, authenticateToken,
+    getTasks, createTask
+}

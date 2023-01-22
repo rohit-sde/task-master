@@ -2,6 +2,7 @@ const express = require("express")
 const dotenv = require("dotenv")
 const connectDB = require("./db/connectDB")
 const usersRouter = require("./routes/Users")
+const tasksRouter = require("./routes/Tasks")
 const {NotFound} = require("./middlewares/NotFound")
 const DefaultError = require("./middlewares/DefaultError")
 
@@ -18,6 +19,7 @@ app.use(express.json())
 
 // Routes
 app.use('/api/v1/users', usersRouter)
+app.use('/api/v1/tasks', tasksRouter)
 
 // Default Route
 app.use(NotFound)
