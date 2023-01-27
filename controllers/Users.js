@@ -13,8 +13,8 @@ const getUsers = async (req, res) => {
     let perPage = 20
     let page = 0
 
-    if( req.query.perpage ){
-        const num = Number(req.query.perpage)
+    if( req.query.perPage ){
+        const num = Number(req.query.perPage)
         perPage = num < 1 ? 1 : num > maxPerPage ? maxPerPage : num
     }
 
@@ -29,6 +29,7 @@ const getUsers = async (req, res) => {
     .select('-verifyMeta -pass -__v')
     .skip(page * perPage)
     .limit(perPage)
+    .sort({created_at: -1})
     
     users = users.map(user => {
         user = user.toJSON()
@@ -639,13 +640,39 @@ const authenticateToken = async (req, res, next) => {
     }
 }
 const getTasks = async (req, res) => {
-    console.log(res.locals)
-    // let {authUser} = res.locals
-    // const userId = authUser.userId
-    // let tasks = Users
-    //     .find({_id: userId})
-    //     .select("tasks")
-    res.status(200).json(ret("tasks"))
+    let {authUser} = res.locals
+    const userId = authUser.userId
+    const maxPerPage = 100
+    let perPage = 20
+    let page = 0
+
+    if( req.query.perPage ){
+        const num = Number(req.query.perPage)
+        perPage = num < 1 ? 1 : num > maxPerPage ? maxPerPage : num
+    }
+
+    if( req.query.page ){
+        const num = Number(req.query.page)
+        page = num > 0 ? num : 1
+        page--
+    }
+
+    try{
+        let tasks = await Users.aggregate([
+            {$match: {_id: mongoose.Types.ObjectId("6161261758b9a4723a146380")}},
+            {$project: {tasks: "$tasks"}},
+            {$unwind: "$tasks"},
+            {$replaceRoot: {newRoot: "$tasks"}},
+            {$sort: {created_at: -1}},
+            {$skip: page * perPage},
+            {$limit: perPage}
+        ])
+
+        res.status(200).json(ret(tasks))
+    }
+    catch(e){
+        res.status(400).json(err('Something went wrong [getTasks]'))
+    }
 }
 const createTask = async (req, res) => {
     let {authUser} = res.locals
@@ -657,42 +684,40 @@ const createTask = async (req, res) => {
         data.description = req.body.description
 
         if(req.body.priority){
-            let priority = req.body.priority
-            if(priority.toLowerCase() === 'high' || priority.toLowerCase() === 'low')
-                data.priority = priority.toLowerCase()
+            let priority = req.body.priority.toLowerCase()
+            if(priority === 'high' || priority === 'low')
+                data.priority = priority
             else{
-                res.status(400).json(ret('"high" or "low" are the only possible values "priority"'))
+                res.status(400).json(ret('"high" or "low" or "normal" are the only possible values "priority". Default: "normal"'))
             }
         }
         try{
+            const taskId = new mongoose.Types.ObjectId()
             let taskRes = await Users.updateOne(
                 {
-                    _id: "6161261758b9a4723a146380"
+                    _id: userId
                 },
                 {
                     $push: {
-                        tasks : data
+                        tasks : {
+                            _id: taskId,
+                            ...data
+                        }
                     }
                 }
             )
 
             if(taskRes && taskRes.modifiedCount === 1){
                 let task = await Users.aggregate([
-                    {
-                        $match:{
-                            _id: mongoose.Types.ObjectId(userId),
-                            "tasks.title": data.title,
-                            "tasks.description": data.description
-                        }
-                    },
-                    {
-                        $sort: {
-                            created_at: -1
-                        }
-                    }
+                    {$match: {_id: mongoose.Types.ObjectId(userId)} },
+                    {$unwind: "$tasks"},
+                    {$match: {"tasks._id": mongoose.Types.ObjectId(taskId)} },
+                    {$replaceRoot: {newRoot: "$tasks"} }
                 ])
-                console.log(task)
-                res.status(200).json(ret(data))
+                // console.log(task)
+                res.status(200).json(ret({
+                    task
+                }, "Task created successfully."))
             }
             else{
                 res.status(400).json(ret('Failed to Add tasks'))
@@ -708,14 +733,201 @@ const createTask = async (req, res) => {
         req.body.description ?
         res.status(400).json(ret('"title" must required')) :
         res.status(400).json(ret('"title" & "description" must required'))
+    }    
+}
+const updateTask = async (req, res) => {
+    let {authUser} = res.locals
+    const userId = mongoose.Types.ObjectId(authUser.userId)
+    let data = {}
+    if(req.body.title) data.title = req.body.title
+    if(req.body.description) data.description = req.body.description
+    
+    if(Object.keys(data).length > 0){
+        let taskId = req.params.taskId
+    
+        if(taskId !== undefined){
+            try{
+                taskId = mongoose.Types.ObjectId(taskId)
+
+                let date = (new Date()).toISOString()
+                data.updated_at = date
+
+                let newData = getTasksNestedObj(data)
+
+                let result = await Users.updateOne(
+                    {_id: userId, "tasks._id": taskId},
+                    {$set: newData}
+                )
+                if(result.modifiedCount && result.matchedCount){
+                    res.status(200).json(ret({taskId, data}))
+                }
+                else{
+                    res.status(400).json(err('Failed to update "Task Title/Description"'))
+                }
+            }
+            catch(e){
+                const message = "Argument passed in must be a Buffer or string of 12 bytes or a string of 24 hex characters"
+                if(e.message === message){
+                    res.status(400).json(err(message, e))
+                }
+                else{
+                    res.status(400).json(err('Something went Wrong [updateTask]', e))
+                }
+            }
+        }
+        else{
+            res.status(200).json(ret("Invalild Route [updateTask]"))
+        }
+
     }
-    
-    // console.log()
-    // const userId = authUser.userId
-    // let tasks = Users
-    //     .find({_id: userId})
-    //     .select("tasks")
-    
+    else{
+        res.status(200).json(ret('Either "title" or "description" must required.'))
+    }    
+}
+const deleteTask = async (req, res) => {
+    let {authUser} = res.locals
+    const userId = mongoose.Types.ObjectId(authUser.userId)
+    let taskId = req.params.taskId
+
+    if(taskId !== undefined){
+        try{
+            taskId = mongoose.Types.ObjectId(taskId)
+
+            let result = await Users.updateOne(
+                {_id: userId},
+                {$pull: {tasks: {_id: taskId} } }
+            )
+            // console.log(result)
+            if(result.modifiedCount && result.matchedCount){
+                res.status(200).json(ret({taskId, result}))
+            }
+            else{
+                res.status(400).json(err("Item doesn't Exists"))
+            }
+        }
+        catch(e){
+            const message = "Argument passed in must be a Buffer or string of 12 bytes or a string of 24 hex characters"
+            if(e.message === message){
+                res.status(400).json(err(message, e))
+            }
+            else{
+                res.status(400).json(err('Something went Wrong [deleteTask]', e))
+            }
+        }
+    }
+    else{
+        res.status(200).json(ret("Invalild Route [deleteTask]"))
+    }
+
+}
+const updateTaskIsCompleted = async (req, res) => {
+    let {authUser} = res.locals
+    const userId = mongoose.Types.ObjectId(authUser.userId)
+    let isCompleted = req.params.isCompleted
+    let taskId = req.params.taskId
+    let data = {is_completed: true}
+    if(taskId !== undefined){
+        try{
+            taskId = mongoose.Types.ObjectId(taskId)
+
+            if(isCompleted !== undefined){
+                isCompleted = Number(isCompleted)
+                if(isCompleted === 0 || isCompleted === 1){
+                    if(!isCompleted){
+                        data.is_completed = false
+                    }
+                }
+                else{
+                    res.status(400).json(err('Invalid URL input. Possible values are: 0,1'))
+                }
+            }
+            let date = (new Date()).toISOString()
+            data.completed_at = date
+            data.updated_at = date
+
+            data = getTasksNestedObj(data)
+
+            let result = await Users.updateOne(
+                {_id: userId, "tasks._id": taskId},
+                {$set: data}
+            )
+            if(result.modifiedCount && result.matchedCount){
+                res.status(200).json(ret({taskId, isCompleted: data['tasks.$.is_completed']}))
+            }
+            else{
+                res.status(400).json(err('Failed to update "Task Completed"'))
+            }
+        }
+        catch(e){
+            const message = "Argument passed in must be a Buffer or string of 12 bytes or a string of 24 hex characters"
+            if(e.message === message){
+                res.status(400).json(err(message, e))
+            }
+            else{
+                res.status(400).json(err('Something went Wrong [updateTaskIsCompleted]', e))
+            }
+        }
+    }
+    else{
+        res.status(200).json(ret("Invalild Route [updateTaskIsCompleted]"))
+    }
+}
+const updateTaskPriority = async (req, res) => {
+    let {authUser} = res.locals
+    const userId = mongoose.Types.ObjectId(authUser.userId)
+    let priority = req.params.priority
+    let taskId = req.params.taskId
+    let data = {priority: 'normal'}
+    if(taskId !== undefined){
+        try{
+            taskId = mongoose.Types.ObjectId(taskId)
+
+            if(priority !== undefined){
+                priority = priority.toLowerCase()
+                if(priority === 'high'|| priority === 'low' || priority === 'normal'){
+                    data.priority = priority
+                }
+                else{
+                    res.status(400).json(err('Invalid URL input. Possible values are: 0,1'))
+                }
+            }
+            let date = (new Date()).toISOString()
+            data.updated_at = date
+
+            data = getTasksNestedObj(data)
+
+            let result = await Users.updateOne(
+                {_id: userId, "tasks._id": taskId},
+                {$set: data}
+            )
+            if(result.modifiedCount && result.matchedCount){
+                res.status(200).json(ret({taskId, priority: data['tasks.$.priority']}))
+            }
+            else{
+                res.status(400).json(err('Failed to update "Task Priority"'))
+            }
+        }
+        catch(e){
+            const message = "Argument passed in must be a Buffer or string of 12 bytes or a string of 24 hex characters"
+            if(e.message === message){
+                res.status(400).json(err(message, e))
+            }
+            else{
+                res.status(400).json(err('Something went Wrong [updateTaskPriority]', e))
+            }
+        }
+    }
+    else{
+        res.status(200).json(ret("Invalild Route [updateTaskPriority]"))
+    }
+}
+const getTasksNestedObj = obj => {
+    let keys = Object.keys(obj)
+    let newData = {}
+    keys.forEach(key => {
+        newData['tasks.$.'+key] = obj[key]
+    })
+    return newData
 }
 
 
@@ -723,5 +935,6 @@ module.exports = {
     getUsers, createUser, updateUser,
     verifyEmail, resetPassword,
     login, logout, refreshToken, authenticateToken,
-    getTasks, createTask
+    getTasks, createTask, updateTask, deleteTask,
+    updateTaskIsCompleted, updateTaskPriority
 }
