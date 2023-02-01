@@ -29,15 +29,15 @@ app.use(DefaultError)
 
 // Server
 const start = async () => {
-  const port = process.env.PORT || 5000
-  try {
-    await connectDB(process.env.MONGO_URI)
-    app.listen(port, () =>
-      console.log(`Server is listening on port ${port}...`)
-    )
-  } catch (error) {
-    console.log(error)
-  }
+	const port = process.env.PORT || 5000
+	try {
+		await connectDB(process.env.MONGO_URI)
+		app.listen(port, () =>
+			console.log(`Server is listening on port ${port}...`)
+		)
+	} catch (error) {
+		console.log(error)
+	}
 }
 
 start()
