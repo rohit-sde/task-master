@@ -46,12 +46,14 @@ const createUser = async (req, res, next) => {
 		lname: req.body.lname,
 		email: req.body.email,
 		pass: req.body.pass,
+		sendOTP: req.body.sendOTP,
 	}
 	if(!data.fname) res.status(400).send(err("First Name is Required"))
 	if(!data.lname) res.status(400).send(err("Last Name is Required"))
 	if(!data.email) res.status(400).send(err("Email Name is Required"))
 	if(!data.pass) res.status(400).send(err("Password Name is Required"))
-	
+	if(!data.sendOTP) data.sendOTP = false
+
 	let validateError = false
 	// Validate "fname"
 	if(!validateError && data.fname.match(/[a-zA-Z0-9\. ]/g).length !== data.fname.length)
@@ -93,9 +95,21 @@ const createUser = async (req, res, next) => {
 					delete user.verifyMeta
 					delete user.tasks
 					delete user.__v
-					
-					res.status(201).send( ret(user, "User created successfully.") )
-					
+					if(data.sendOTP){
+						const emailStatus = await _sendOTPEmail(data.email, 0, otp => _getOTPEmailTemplate(otp, 0) )
+						if(emailStatus.status){
+							const u = await Users.findOne({ _id: user._id })
+							user.verifyMeta = u.verifyMeta
+							user.verifyMeta.otp = null
+							res.status(201).send( ret(user, "User created successfully.") )
+						}
+						else{
+							res.status(400).send( err(`[${data.email}] Account Created. But failed to send OTP`) )
+						}
+					}
+					else{
+						res.status(201).send( ret(user, "User created successfully. [WO]") ) // without sending OTP
+					}
 				}
 			}
 			else{
@@ -377,7 +391,7 @@ const sendOTP = async (email, subject, emailBody, attachments) => {
 			clientId: OAUTH_CLIENT_ID,
 			clientSecret: OAUTH_CLIENT_SECRET,
 			refreshToken: OAUTH_REFRESH_TOKEN,
-			accessToken: accessToken
+			accessToken: accessToken.token
 		}
 	}
 	let transporter = nodemailer.createTransport(transport)
@@ -521,6 +535,99 @@ const resetPassword = async (req, res) => {
 		res.status(400).send(err('Please send "userEmail".') )
 	}
 }
+const _sendOTPEmail = async (userEmail, usedFor = 0, getHtmlCssText) => {
+	const retData = {
+		status: 0,
+		message: 'Message Not Mentioned.',
+		error: null,
+		data: null
+	}
+	const usedForArr = ['verify-email', 'reset-password']
+	let user = await Users.find({email: userEmail})
+	if(user && user.length === 1){
+		user = user[0]
+		const otp = 100000 + Math.round(Math.random() * 1000000)
+		let data = {
+			verifyMeta: {
+				otp,
+				issued_at: (new Date).toISOString(),
+				used_for: usedForArr[usedFor]
+			}
+		}
+		let options = {new: true}
+
+		try{
+			const {subject, text, html, css} = getHtmlCssText(otp)
+			
+			const emailBody = {
+				html: emailTemplate(html, css),
+				text: text
+			}
+			let emailRes = await sendOTP(user.email, subject, emailBody)
+			console.log(emailRes)
+			if(typeof ( accepted = emailRes.accepted ) === 'object' && accepted.length === 1 && accepted[0] === user.email){
+				user = await Users.findByIdAndUpdate(user._id, data, options)
+				if(user){
+					retData.status = 1
+					retData.data = `OTP has been sent to <${user.email}>.`
+					retData.message = null
+				}
+				else{
+					retData.message = 'Something went wrong while sending OTP.'
+				}
+			}
+			else{
+				retData.message = 'Something went wrong with [_sendOTPEmail] method.'
+				retData.error = emailRes
+			}
+		}
+		catch(e){
+			retData.message = "Error while sending OTP."
+			retData.error = e
+		}
+	}
+	else{
+		retData.message = "Email doesn't exists"
+	}
+	return retData
+}
+const _getOTPEmailTemplate = (otp, emailTypeIndex = 0) => {
+	const emailType = ['verify-email', 'reset-password']
+	let html = `
+		<p class="center">OTP</p>
+		<p class="center otp">${otp}</p>
+		<p class="center danger">
+			<strong>Note:</strong>
+			<em>OTP is valid only for <strong>60</strong> seconds.</em> 
+		</p>
+	`
+	let css = `
+		.center{color: gray; font-weight: bold;}
+		.otp{font-size: 24px; letter-spacing: 2px;}
+		.danger{color: red;}
+	`
+	switch (emailType[emailTypeIndex]){
+		case 'verify-email':
+			html = `<h2>Verify your email</h2>` + html
+			return {
+				subject: `Verify your email address`,
+				text: `[OTP: ${otp}] - This OTP is valid only for 60 seconds.`,
+				html,
+				css
+			}
+		case 'reset-password':
+			html = `<h2>Reset your Password</h2>` + html
+			return {
+				subject: `OTP to Reset Password`,
+				text: `[OTP: ${otp}] - This OTP is valid only for 60 seconds.`,
+				html,
+				css
+			}
+		default:
+			console.log(`Invalid index is pass to "_getOTPEmailTemplate" method`)
+			return false
+	}
+}
 const login = async (req, res) => {
 	const userEmail = req.body.userEmail
 	const userPass = req.body.userPass
@@ -530,27 +637,47 @@ const login = async (req, res) => {
 		if(user && user.length > 0){
 			if(user.length <2){
 				user = user[0]
-				try{
-					if(bcrypt.compareSync(userPass, user.pass)){
-						let data = {
-							userId: user._id,
-							fname: user.fname,
-							lname: user.lname
-						}
-						let accessToken = jwt.sign(data, process.env.JWT_ACCESS_TOKEN_SECRET, {expiresIn: 60*60})
-						let refreshToken = jwt.sign(data, process.env.JWT_REFRESH_TOKEN_SECRET)
-
-						await Tokens.create({refreshToken})
-						res.status(200).json(ret({
-							accessToken, refreshToken
-						}, "LoggedIn Successfully."))
-					}
-					else{
-						res.status(400).json(err("Invalid Email/Password. [3]"))
+				const retData = {
+					token: {
+						accessToken: null,
+						refreshToken: null
+					},
+					user: {
+						_id: user._id,
+						fname: user.fname,
+						lname: user.lname,
+						email: user.email,
+						role: user.role,
+						verified: user.verified
 					}
 				}
-				catch(e){
-					res.status(400).json(err("Error Found.", e))
+				if(user.verified){
+					try{
+						if(bcrypt.compareSync(userPass, user.pass)){
+							let data = {
+								userId: user._id,
+								fname: user.fname,
+								lname: user.lname
+							}
+							let accessToken = jwt.sign(data, process.env.JWT_ACCESS_TOKEN_SECRET, {expiresIn: 60*60})
+							let refreshToken = jwt.sign(data, process.env.JWT_REFRESH_TOKEN_SECRET)
+
+							await Tokens.create({refreshToken})
+
+							retData.token.accessToken = accessToken
+							retData.token.refreshToken = refreshToken
+							res.status(200).json(ret(retData, "LoggedIn Successfully."))
+						}
+						else{
+							res.status(400).json(err("Invalid Email/Password. [3]"))
+						}
+					}
+					catch(e){
+						res.status(400).json(err("Error Found.", e))
+					}
+				}
+				else{
+					res.status(200).json(ret( retData, 'LoggedIn Successfully. [U]'))
 				}
 			}
 			else{
