@@ -303,7 +303,10 @@ const verifyEmail = async (req, res) => {
 		}
 	}
 	else{
-		const otp = 100000 + Math.round(Math.random() * 1000000)
+		// const otp = 100000 + Math.round(Math.random() * 1000000)
+		const min = 100000
+		const max = 999999
+		const otp = Math.floor( Math.random() * (max-min+1) + min)
 		let data = {
 			verifyMeta: {
 				otp,
@@ -335,7 +338,7 @@ const verifyEmail = async (req, res) => {
 					html: emailTemplate(html, css),
 					text: `[OTP: ${otp}] - This OTP is valid only for 60 seconds.`
 				}
-				let emailRes = await sendOTP(user.email, "Please verify your email", emailBody)
+				let emailRes = await _sendOTP(user.email, "Please verify your email", emailBody)
 				
 				if(typeof ( accepted = emailRes.accepted ) === 'object' && accepted.length === 1 && accepted[0] === user.email){
 					user = await Users.findByIdAndUpdate(userId, data, options)
@@ -347,7 +350,7 @@ const verifyEmail = async (req, res) => {
 					}
 				}
 				else{
-					res.status(400).send(err("Something went wrong with [sendOTP] method.", emailRes))
+					res.status(400).send(err("Something went wrong with [_sendOTP] method.", emailRes))
 				}
 			}
 			else{
@@ -359,7 +362,7 @@ const verifyEmail = async (req, res) => {
 		}
 	}
 }
-const sendOTP = async (email, subject, emailBody, attachments) => {
+const _sendOTP = async (email, subject, emailBody, attachments) => {
 
 	const {OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REFRESH_TOKEN, OAUTH_REDIRECT_URI} = process.env
 	const oAuth2Client = new google.auth.OAuth2(OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI)
@@ -508,7 +511,7 @@ const resetPassword = async (req, res) => {
 					html: emailTemplate(html, css),
 					text: `[OTP: ${otp}] - This OTP is valid only for 60 seconds.`
 				}
-				let emailRes = await sendOTP(user.email, "Reset Password", emailBody)
+				let emailRes = await _sendOTP(user.email, "Reset Password", emailBody)
 				
 				if(typeof ( accepted = emailRes.accepted ) === 'object' && accepted.length === 1 && accepted[0] === user.email){
 					user = await Users.findByIdAndUpdate(user._id, data, options)
@@ -520,7 +523,7 @@ const resetPassword = async (req, res) => {
 					}
 				}
 				else{
-					res.status(400).send(err("Something went wrong with [sendOTP] method.", emailRes))
+					res.status(400).send(err("Something went wrong with [_sendOTP] method.", emailRes))
 				}
 			}
 			catch(e){
@@ -563,7 +566,7 @@ const _sendOTPEmail = async (userEmail, usedFor = 0, getHtmlCssText) => {
 				html: emailTemplate(html, css),
 				text: text
 			}
-			let emailRes = await sendOTP(user.email, subject, emailBody)
+			let emailRes = await _sendOTP(user.email, subject, emailBody)
 			console.log(emailRes)
 			if(typeof ( accepted = emailRes.accepted ) === 'object' && accepted.length === 1 && accepted[0] === user.email){
 				user = await Users.findByIdAndUpdate(user._id, data, options)
@@ -651,7 +654,7 @@ const login = async (req, res) => {
 						verified: user.verified
 					}
 				}
-				if(user.verified){
+				// if(user.verified){
 					try{
 						if(bcrypt.compareSync(userPass, user.pass)){
 							let data = {
@@ -659,14 +662,19 @@ const login = async (req, res) => {
 								fname: user.fname,
 								lname: user.lname
 							}
-							let accessToken = jwt.sign(data, process.env.JWT_ACCESS_TOKEN_SECRET, {expiresIn: 60*60})
-							let refreshToken = jwt.sign(data, process.env.JWT_REFRESH_TOKEN_SECRET)
+							if(user.verified){
+								let accessToken = jwt.sign(data, process.env.JWT_ACCESS_TOKEN_SECRET, {expiresIn: 60*60})
+								let refreshToken = jwt.sign(data, process.env.JWT_REFRESH_TOKEN_SECRET)
+								
+								await Tokens.create({refreshToken})
 
-							await Tokens.create({refreshToken})
-
-							retData.token.accessToken = accessToken
-							retData.token.refreshToken = refreshToken
-							res.status(200).json(ret(retData, "LoggedIn Successfully."))
+								retData.token.accessToken = accessToken
+								retData.token.refreshToken = refreshToken
+								res.status(200).json(ret(retData, "LoggedIn Successfully."))
+							}
+							else{
+								res.status(200).json(ret( retData, 'LoggedIn Successfully. [U]'))
+							}
 						}
 						else{
 							res.status(400).json(err("Invalid Email/Password. [3]"))
@@ -675,10 +683,10 @@ const login = async (req, res) => {
 					catch(e){
 						res.status(400).json(err("Error Found.", e))
 					}
-				}
-				else{
-					res.status(200).json(ret( retData, 'LoggedIn Successfully. [U]'))
-				}
+				// }
+				// else{
+				// 	res.status(200).json(ret( retData, 'LoggedIn Successfully. [U]'))
+				// }
 			}
 			else{
 				res.status(400).json(err("Something went wrong. [2]"))
