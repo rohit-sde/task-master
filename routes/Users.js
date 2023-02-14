@@ -17,7 +17,7 @@ router.route("/refreshToken")
 	.post(Users.refreshToken)
 
 router.route("/resetPassword")
-	.patch(Users.resetPassword)
+	.patch(Users.authenticateToken, Users.resetPassword)
 
 router.route("/:userId")
 	.patch(Users.authenticateToken, Users.updateUser)
