@@ -15,9 +15,10 @@ else env = envConfig.parsed
 
 // Middlewares
 app.use(function(req, res, next) {
-	res.header("Access-Control-Allow-Origin", "http://localhost:3000"); // update to match the domain you will make the request from
-	res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-	res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE");
+	res.header("Access-Control-Allow-Origin", "http://localhost:3000")		// update to match the domain you will make the request from
+	res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
+	res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
+	// headers.append('Access-Control-Allow-Credentials', 'true')
 	next();
 });
 app.use(express.static("./public"))
