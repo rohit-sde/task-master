@@ -15,26 +15,27 @@ const TaskSchema = new mongoose.Schema({
 		required: [true, `[Description] must provide`],
 		trim: true
 	},
-	priority: {
-		type: String,
-		required: [true, `[Priority] must provide`],
-		trim: true,
-		enum: ["normal", "high", "low"],
-		default: "normal"
+	is_high_priority: {
+		type: Boolean,
+		default: false
 	},
 	is_completed: {
 		type: Boolean,
 		default: false
+	},
+	completed_at: {
+		type: Date,
+		default: Date.now
+	},
+	due_datetime: {
+		type: Date,
+		default: Date.now() + 24*60*60*1000
 	},
 	created_at: {
 		type: Date,
 		default: Date.now
 	},
 	updated_at: {
-		type: Date,
-		default: Date.now
-	},
-	completed_at: {
 		type: Date,
 		default: Date.now
 	}

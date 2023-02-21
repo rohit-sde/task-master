@@ -12,10 +12,10 @@ router.route("/:taskId")
 	.patch(authenticateToken, Users.updateTask)
 	.delete(authenticateToken, Users.deleteTask)
 
-router.route("/:taskId/completed/:isCompleted?")
-	.patch(authenticateToken, Users.updateTaskIsCompleted)
+// router.route("/:taskId/completed/:isCompleted?")
+// 	.patch(authenticateToken, Users.updateTaskIsCompleted)
 
-router.route("/:taskId/priority/:priority?")
-	.patch(authenticateToken, Users.updateTaskPriority)
+// router.route("/:taskId/priority/:priority?")
+// 	.patch(authenticateToken, Users.updateTaskPriority)
 
 module.exports = router;

@@ -732,7 +732,7 @@ const getTasks = async (req, res) => {
 
 	try{
 		let tasks = await Users.aggregate([
-			{$match: {_id: mongoose.Types.ObjectId("6161261758b9a4723a146380")}},
+			{$match: {_id: mongoose.Types.ObjectId(userId)}},
 			{$project: {tasks: "$tasks"}},
 			{$unwind: "$tasks"},
 			{$replaceRoot: {newRoot: "$tasks"}},
@@ -752,18 +752,27 @@ const createTask = async (req, res) => {
 	const userId = authUser.userId
 	let data = {}
 
-	if(req.body.title && req.body.description){
-		data.title = req.body.title
-		data.description = req.body.description
+	if(req.body.title){
+		const title = req.body.title					// String
+		const description = req.body.description		// String
+		const isHighPriority = req.body.isHighPriority	// Boolean
+		const dueDatetime = req.body.dueDatetime		// Date
+		
+		data.title = title
 
-		if(req.body.priority){
-			let priority = req.body.priority.toLowerCase()
-			if(priority === 'high' || priority === 'low')
-				data.priority = priority
-			else{
-				res.status(400).json(ret('"high" or "low" or "normal" are the only possible values "priority". Default: "normal"'))
-			}
+		if(description) data.description = description
+		
+		if(isHighPriority){
+			const h = isHighPriority
+			if( h === true || h === 'true' || h === 1 || h === '1' )
+				data.is_high_priority = h
 		}
+		if(dueDatetime){
+			const invalidDate = new Date('')
+			let date = new Date(dueDatetime)
+			if(date !== invalidDate) data.due_datetime = date.toISOString()
+		}
+		
 		try{
 			const taskId = new mongoose.Types.ObjectId()
 			let taskRes = await Users.updateOne(
@@ -801,41 +810,81 @@ const createTask = async (req, res) => {
 		}
 	}
 	else{
-		req.body.title ?
-		res.status(400).json(ret('"description" must required')) :
-		req.body.description ?
-		res.status(400).json(ret('"title" must required')) :
-		res.status(400).json(ret('"title" & "description" must required'))
+		res.status(400).json(ret('"title" must required'))
 	}	
 }
 const updateTask = async (req, res) => {
 	let {authUser} = res.locals
 	const userId = mongoose.Types.ObjectId(authUser.userId)
 	let data = {}
-	if(req.body.title) data.title = req.body.title
-	if(req.body.description) data.description = req.body.description
+
+	let title = req.body.title
+	let description = req.body.description
+	let isHighPriority = req.body.isHighPriority
+	let isCompleted = req.body.isCompleted
+	let dueDatetime = req.body.dueDatetime
+	
+	if(title) data.title = title
+	if(description) data.description = description
+	if(isHighPriority !== undefined){
+		const h = isHighPriority
+		if( h === true || h === 'true' || h === 1 || h === '1' )
+			data.is_high_priority = true
+		else data.is_high_priority = false
+	}
+	if(isCompleted !== undefined){
+		const c = isCompleted
+		if( c === true || c === 'true' || c === 1 || c === '1' ){
+			data.is_completed = true
+			data.completed_at = (new Date() ).toISOString()
+		}
+		else data.is_completed = false
+	}
+	if(dueDatetime){
+		const invalidDate = new Date('')
+		let date = new Date(dueDatetime)
+		if(date !== invalidDate) {
+			data.due_datetime = date.toISOString()
+			// let nowDate = Date.now()
+
+			// if(date.getTime() > nowDate){
+			// 	data.is_completed = false
+			// }
+			// else{
+			// 	data.is_completed = true
+			// }
+		}
+	}
 	
 	if(Object.keys(data).length > 0){
 		let taskId = req.params.taskId
-	
+		
 		if(taskId !== undefined){
 			try{
 				taskId = mongoose.Types.ObjectId(taskId)
-
+				
 				let date = (new Date()).toISOString()
 				data.updated_at = date
-
 				let newData = getTasksNestedObj(data)
-
 				let result = await Users.updateOne(
 					{_id: userId, "tasks._id": taskId},
 					{$set: newData}
 				)
+				console.log('hi1')
 				if(result.modifiedCount && result.matchedCount){
-					res.status(200).json(ret({taskId, data}))
+					console.log('hi')
+					data = await Users.aggregate([
+						{$match: {_id: mongoose.Types.ObjectId(userId)}},
+						{$project: {tasks: "$tasks"}},
+						{$unwind: "$tasks"},
+						{$replaceRoot: {newRoot: "$tasks"}},
+						{$match: {_id: mongoose.Types.ObjectId(taskId)}}
+					])
+					data = data[0]
+					res.status(200).json(ret(data))
 				}
 				else{
-					res.status(400).json(err('Failed to update "Task Title/Description"'))
+					res.status(400).json(err('Failed to update.'))
 				}
 			}
 			catch(e){
@@ -849,12 +898,11 @@ const updateTask = async (req, res) => {
 			}
 		}
 		else{
-			res.status(200).json(ret("Invalild Route [updateTask]"))
+			res.status(400).json(err("Invalild Route [updateTask]"))
 		}
-
 	}
 	else{
-		res.status(200).json(ret('Either "title" or "description" must required.'))
+		res.status(400).json(err('At least one field is Required must required.'))
 	}	
 }
 const deleteTask = async (req, res) => {
@@ -893,6 +941,16 @@ const deleteTask = async (req, res) => {
 	}
 
 }
+const getTasksNestedObj = obj => {
+	let keys = Object.keys(obj)
+	let newData = {}
+	keys.forEach(key => {
+		newData['tasks.$.'+key] = obj[key]
+	})
+	return newData
+}
+
+/*
 const updateTaskIsCompleted = async (req, res) => {
 	let {authUser} = res.locals
 	const userId = mongoose.Types.ObjectId(authUser.userId)
@@ -994,20 +1052,12 @@ const updateTaskPriority = async (req, res) => {
 		res.status(200).json(ret("Invalild Route [updateTaskPriority]"))
 	}
 }
-const getTasksNestedObj = obj => {
-	let keys = Object.keys(obj)
-	let newData = {}
-	keys.forEach(key => {
-		newData['tasks.$.'+key] = obj[key]
-	})
-	return newData
-}
+*/
 
 
 module.exports = {
 	getUsers, createUser, updateUser,
 	verifyEmail, resetPassword,
 	login, logout, refreshToken, authenticateToken,
-	getTasks, createTask, updateTask, deleteTask,
-	updateTaskIsCompleted, updateTaskPriority
+	getTasks, createTask, updateTask, deleteTask
 }
