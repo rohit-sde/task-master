@@ -718,28 +718,39 @@ const getTasks = async (req, res) => {
 	const maxPerPage = 100
 	let perPage = 20
 	let page = 0
-
+	let isCompleted = undefined
+	
 	if( req.query.perPage ){
 		const num = Number(req.query.perPage)
 		perPage = num < 1 ? 1 : num > maxPerPage ? maxPerPage : num
 	}
-
 	if( req.query.page ){
 		const num = Number(req.query.page)
 		page = num > 0 ? num : 1
 		page--
 	}
+	if( req.query.isCompleted !== undefined){
+		const ic = req.query.isCompleted
+		if(ic === 'true' || ic === true) isCompleted = true
+		else if(ic === 'false' || ic === false) isCompleted = false
+	}
 
 	try{
-		let tasks = await Users.aggregate([
+		const pipeline = [
 			{$match: {_id: mongoose.Types.ObjectId(userId)}},
 			{$project: {tasks: "$tasks"}},
 			{$unwind: "$tasks"},
 			{$replaceRoot: {newRoot: "$tasks"}},
+		]
+		if(isCompleted !== undefined){
+			pipeline.push({$match: {is_completed: isCompleted}})
+		}
+		pipeline.push(
 			{$sort: {created_at: -1}},
 			{$skip: page * perPage},
 			{$limit: perPage}
-		])
+		)
+		let tasks = await Users.aggregate(pipeline)
 
 		res.status(200).json(ret(tasks))
 	}
