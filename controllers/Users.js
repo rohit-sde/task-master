@@ -718,7 +718,6 @@ const getTasks = async (req, res) => {
 	const maxPerPage = 100
 	let perPage = 20
 	let page = 0
-	let isCompleted = undefined
 	
 	if( req.query.perPage ){
 		const num = Number(req.query.perPage)
@@ -729,11 +728,11 @@ const getTasks = async (req, res) => {
 		page = num > 0 ? num : 1
 		page--
 	}
-	if( req.query.isCompleted !== undefined){
-		const ic = req.query.isCompleted
-		if(ic === 'true' || ic === true) isCompleted = true
-		else if(ic === 'false' || ic === false) isCompleted = false
-	}
+	// if( req.query.isCompleted !== undefined){
+	// 	const ic = req.query.isCompleted
+	// 	if(ic === 'true' || ic === true) isCompleted = true
+	// 	else if(ic === 'false' || ic === false) isCompleted = false
+	// }
 
 	try{
 		/* 
@@ -748,17 +747,49 @@ const getTasks = async (req, res) => {
 			{$unwind: "$tasks"},
 			{$replaceRoot: {newRoot: "$tasks"}},
 		]
-		if(isCompleted !== undefined){
-			pipeline.push({$match: {is_completed: isCompleted}})
+		if(req.query.filter !== undefined){
+			switch( req.query.filter ){
+				case 'done': {
+					pipeline.push(
+						{$match: { is_completed: true, due_datetime: {$lt: new Date()} } },
+						{$sort: {created_at: -1}}
+					)
+					break
+				}
+				case 'pending': {
+					pipeline.push(
+						{$match: { is_completed: false, due_datetime: {$gt: new Date()} } },
+						{$sort: {created_at: -1}}
+					)
+					break
+				}
+				case 'expired': {
+					pipeline.push(
+						{$match: { is_completed: false, due_datetime: {$lte: new Date()} } },
+						{$sort: {created_at: -1}}
+					)
+					break
+				}
+				case 'recent': {
+					pipeline.push( {$sort: {created_at: -1} } )
+					break
+				}
+				case 'upcoming': {
+					pipeline.push(
+						{$match: { is_completed: false, due_datetime: {$gt: new Date()} } },
+						{$sort: {due_datetime: 1}}
+					)
+					break
+				}
+				default: break
+			}
 		}
 		pipeline.push(
-			{$sort: {created_at: -1}},
 			{$group: {_id: null, totalCount: {$sum: 1}, tasks: {$push: "$$ROOT"}}},
-			{$project: {totalCount: {$toInt: "$totalCount"}, tasks: {$slice: ["$tasks", page * perPage, perPage]}}}
-			// {$skip: page * perPage},
-			// {$limit: perPage}
+			{$project: {totalCount: {$toInt: "$totalCount"}, tasks: {$slice: ["$tasks", page * perPage, perPage]}}},
 		)
 		let queryRes = await Users.aggregate(pipeline)
+		if(queryRes.length === 0) queryRes = [{ _id: null, totalCount: 0, tasks: []}]
 		// console.log(queryRes)
 		res.status(200).json(ret(queryRes[0].tasks, null, {totalCount: queryRes[0].totalCount}))
 	}
@@ -779,14 +810,14 @@ const createTask = async (req, res) => {
 		
 		data.title = title
 
-		if(description) data.description = description
+		if(description !== undefined) data.description = description
 		
-		if(isHighPriority){
+		if(isHighPriority !== undefined){
 			const h = isHighPriority
 			if( h === true || h === 'true' || h === 1 || h === '1' )
 				data.is_high_priority = h
 		}
-		if(dueDatetime){
+		if(dueDatetime !== undefined){
 			const invalidDate = new Date('')
 			let date = new Date(dueDatetime)
 			if(date !== invalidDate) data.due_datetime = date.toISOString()
@@ -844,7 +875,7 @@ const updateTask = async (req, res) => {
 	let dueDatetime = req.body.dueDatetime
 	
 	if(title) data.title = title
-	if(description) data.description = description
+	if(description !== undefined) data.description = description
 	if(isHighPriority !== undefined){
 		const h = isHighPriority
 		if( h === true || h === 'true' || h === 1 || h === '1' )
