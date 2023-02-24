@@ -1,15 +1,17 @@
-const err = (message = 'Sorry!', data = null) => {
+const err = (message = 'Sorry!', data = null, obj = {}) => {
 	return {
 		status: 0,
 		message,
-		data
+		data,
+		...obj
 	}
 }
-const ret = (data = null, message = null) => {
+const ret = (data = null, message = null, obj = {}) => {
 	return {
 		status: 1,
 		data,
-		message
+		message,
+		...obj
 	}
 }
 const emailTemplate = (html, css) => {

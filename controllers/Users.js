@@ -736,6 +736,12 @@ const getTasks = async (req, res) => {
 	}
 
 	try{
+		/* 
+			Users.aggregate([
+				{$match: {_id: ObjectId( userId )}},
+				{$project: {count: {$size: "$tasks"}, tasks: {$slice: ["$tasks", 1, 2] }} },
+			])
+		*/
 		const pipeline = [
 			{$match: {_id: mongoose.Types.ObjectId(userId)}},
 			{$project: {tasks: "$tasks"}},
@@ -747,12 +753,14 @@ const getTasks = async (req, res) => {
 		}
 		pipeline.push(
 			{$sort: {created_at: -1}},
-			{$skip: page * perPage},
-			{$limit: perPage}
+			{$group: {_id: null, totalCount: {$sum: 1}, tasks: {$push: "$$ROOT"}}},
+			{$project: {totalCount: {$toInt: "$totalCount"}, tasks: {$slice: ["$tasks", page * perPage, perPage]}}}
+			// {$skip: page * perPage},
+			// {$limit: perPage}
 		)
-		let tasks = await Users.aggregate(pipeline)
-
-		res.status(200).json(ret(tasks))
+		let queryRes = await Users.aggregate(pipeline)
+		// console.log(queryRes)
+		res.status(200).json(ret(queryRes[0].tasks, null, {totalCount: queryRes[0].totalCount}))
 	}
 	catch(e){
 		res.status(400).json(err('Something went wrong [getTasks]'))
