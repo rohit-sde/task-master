@@ -25,4 +25,7 @@ router.route("/:userId")
 router.route("/:userId/verifyEmail")
 	.patch(Users.verifyEmail)
 
+router.route("/getProfile")
+	.get(Users.authenticateToken, Users.getProfile)
+
 module.exports = router;
