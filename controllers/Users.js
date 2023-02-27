@@ -106,7 +106,7 @@ const createUser = async (req, res, next) => {
 							res.status(201).send( ret(user, "User created successfully.") )
 						}
 						else{
-							res.status(400).send( err(`[${data.email}] Account Created. But failed to send OTP`, user) )
+							res.status(201).send( ret(user, `[${data.email}] Account Created. But failed to send OTP. [Something went wrong with Email Server.]`) )
 						}
 					}
 					else{
