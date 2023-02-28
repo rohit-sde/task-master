@@ -15,7 +15,12 @@ else env = envConfig.parsed
 
 // Middlewares
 app.use(function(req, res, next) {
-	res.header("Access-Control-Allow-Origin", "http://localhost:3000")		// update to match the domain you will make the request from
+	if(process.env.FRONTEND_ORIGIN){
+		res.header("Access-Control-Allow-Origin", process.env.FRONTEND_ORIGIN)		// update to match the domain you will make the request from
+	}
+	if(process.env.ALLOW_ALL_ORIGIN && process.env.ALLOW_ALL_ORIGIN?.toLowerCase() === 'true'){
+		res.header("Access-Control-Allow-Origin", "*");
+	}
 	res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
 	res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
 	// headers.append('Access-Control-Allow-Credentials', 'true')
@@ -36,11 +41,11 @@ app.use(DefaultError)
 
 // Server
 const start = async () => {
-	const port = process.env.PORT || 5000
+	const port = process.env.PORT || 5011
 	try {
 		await connectDB(process.env.MONGO_URI)
 		app.listen(port, () =>
-			console.log(`Server is listening on port ${port}...`)
+			console.log(`Server is listening on port http://localhost:${port}/ ...`)
 		)
 	} catch (error) {
 		console.log(error)

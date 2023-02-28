@@ -1,5 +1,10 @@
-.env
+.env*
 /node_modules
+
 .vscode
 local*
 /*.bat
+
+.dockerignore
+Dockerfile*
+docker-compose*.yml
